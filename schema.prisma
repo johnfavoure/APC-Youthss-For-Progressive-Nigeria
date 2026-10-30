@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  MEMBER
+  SUPER_ADMIN
+  NATIONAL_ADMIN
+  STATE_ADMIN
+  LGA_ADMIN
+  WARD_ADMIN
+}
+
+enum MembershipStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProgramStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String?  @unique
+  phone        String   @unique
+  passwordHash String
+  role         UserRole @default(MEMBER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  member       Member?
+  adminProfile AdminProfile?
+  applicationsReviewed Application[] @relation("ApplicationReviewer")
+}
+
+model Member {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @unique @db.Uuid
+  fullName       String
+  dateOfBirth    DateTime         @db.Date
+  stateId        String           @db.Uuid
+  lgaId          String           @db.Uuid
+  wardId         String?          @db.Uuid
+  address        String?
+  photoUrl       String?
+  status         MembershipStatus @default(DRAFT)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state          State            @relation(fields: [stateId], references: [id])
+  lga            Lga              @relation(fields: [lgaId], references: [id])
+  ward           Ward?            @relation(fields: [wardId], references: [id])
+  applications   Application[]
+  card           MembershipCard?
+  programEntries ProgramRegistration[]
+}
+
+model Application {
+  id          String            @id @default(uuid()) @db.Uuid
+  memberId    String            @db.Uuid
+  status      ApplicationStatus @default(PENDING)
+  submittedAt DateTime          @default(now())
+  reviewedAt  DateTime?
+  reviewedBy  String?           @db.Uuid
+  reviewNote  String?
+  member      Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  reviewer    User?             @relation("ApplicationReviewer", fields: [reviewedBy], references: [id])
+  @@index([status, submittedAt])
+}
+
+model MembershipCard {
+  id               String   @id @default(uuid()) @db.Uuid
+  memberId         String   @unique @db.Uuid
+  membershipNumber String   @unique
+  qrTokenHash      String   @unique
+  issuedAt         DateTime @default(now())
+  expiresAt        DateTime?
+  isActive         Boolean  @default(true)
+  member           Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model State {
+  id      String   @id @default(uuid()) @db.Uuid
+  name    String   @unique
+  code    String   @unique
+  lgas    Lga[]
+  members Member[]
+}
+
+model Lga {
+  id       String   @id @default(uuid()) @db.Uuid
+  stateId  String   @db.Uuid
+  name     String
+  state    State    @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  wards    Ward[]
+  members  Member[]
+  @@unique([stateId, name])
+}
+
+model Ward {
+  id       String   @id @default(uuid()) @db.Uuid
+  lgaId    String   @db.Uuid
+  name     String
+  lga      Lga      @relation(fields: [lgaId], references: [id], onDelete: Cascade)
+  members  Member[]
+  @@unique([lgaId, name])
+}
+
+model AdminProfile {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  displayName String
+  stateId     String?  @db.Uuid
+  lgaId       String?  @db.Uuid
+  wardId      String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  @@index([actorId, createdAt])
+}
+
+model Program {
+  id          String        @id @default(uuid()) @db.Uuid
+  title       String
+  description String
+  status      ProgramStatus @default(DRAFT)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  registrations ProgramRegistration[]
+}
+
+model ProgramRegistration {
+  id        String   @id @default(uuid()) @db.Uuid
+  programId String   @db.Uuid
+  memberId  String   @db.Uuid
+  createdAt DateTime @default(now())
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  @@unique([programId, memberId])
+}
